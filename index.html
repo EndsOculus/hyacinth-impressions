@@ -8,7 +8,121 @@
   <link rel="icon" href="./favicon.svg">
   <link rel="stylesheet" href="./survey.css">
   <script defer src="./config.js"></script>
-  <script defer src="./survey.js"></script>
+  <script type="module">
+const hongKong = "https://vote.ends0culus.com/";
+const pages = "https://endsoculus.github.io/hyacinth-impressions/";
+const prefix = "fengxinzi-impressions:";
+const browserKey = prefix + "3:browser";
+const roundTripKey = prefix + "3:roundtrip";
+const currentKey = prefix + "3:draft";
+const oldKey = prefix + "2:draft";
+const doneKey = prefix + "2:submitted";
+const uuid = /^[a-f\d]{8}-[a-f\d]{4}-4[a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/i;
+
+function read(storage, key) {
+  try { return window[storage].getItem(key); } catch { return null; }
+}
+function write(storage, key, value) {
+  try {
+    if (value === null) window[storage].removeItem(key);
+    else window[storage].setItem(key, value);
+    return window[storage].getItem(key) === value;
+  } catch { return false; }
+}
+
+function existingDraft() {
+  for (const key of [currentKey, oldKey]) {
+    const raw = read("localStorage", key);
+    if (raw === null) continue;
+    try {
+      const data = JSON.parse(raw);
+      if (data && uuid.test(data.receipt)) return {key, data};
+    } catch {}
+    break;
+  }
+  return null;
+}
+
+function bind(receipt) {
+  const draft = existingDraft();
+  if (read("localStorage", doneKey) === "yes") return;
+  // Keep an outstanding request idempotent, even after migration.
+  if (draft?.data.receipt === receipt || (draft?.key === currentKey && draft.data.pending === true)) return;
+  const data = draft?.data ?? {page: 0, answers: {}, pending: false};
+  write("localStorage", draft?.key ?? currentKey, JSON.stringify({...data, receipt}));
+}
+
+function startSurvey() {
+  const script = document.createElement("script");
+  script.src = "./survey.js";
+  document.head.appendChild(script);
+}
+
+function clearFragment() {
+  history.replaceState(history.state, "", location.pathname + location.search);
+}
+
+// Both navigation destinations are fixed. No URL, answers or other personal
+// information can travel in the fragment, which the HTTP server never sees.
+function transfer(url, direction, nonce, receipt, done) {
+  location.replace(url + "#fx=" + [direction, nonce, receipt, done ? "1" : "0"].join("."));
+}
+
+async function initialize() {
+  if (window.top !== window || !crypto.randomUUID) return startSurvey();
+  const isHK = location.origin === new URL(hongKong).origin;
+  const isPages = location.origin === new URL(pages).origin && [new URL(pages).pathname, new URL("index.html", pages).pathname].includes(location.pathname);
+  if (!isHK && !isPages) return startSurvey();
+  const [direction, nonce, offered, submitted, ...extra] = location.hash.slice(4).split(".");
+  const packet = location.hash.startsWith("#fx=") && uuid.test(nonce) && uuid.test(offered) &&
+    /^[01]$/.test(submitted) && extra.length === 0;
+  if (location.hash.startsWith("#fx=")) clearFragment();
+  async function open() {
+    let receipt = read("localStorage", browserKey);
+    const done = read("localStorage", doneKey) === "yes";
+    if (isHK) {
+      const returning = packet && direction === "request" && document.referrer.startsWith(new URL(pages).origin + "/");
+      if (!uuid.test(receipt)) {
+        receipt = existingDraft()?.data.receipt || (returning ? offered : crypto.randomUUID());
+        write("localStorage", browserKey, receipt);
+      }
+      if (returning && submitted === "1") write("localStorage", doneKey, "yes");
+      bind(receipt);
+      if (returning) return transfer(pages, "return", nonce, receipt, read("localStorage", doneKey) === "yes");
+      return startSurvey();
+    }
+    if (packet && direction === "return" && read("sessionStorage", roundTripKey) === nonce) {
+      write("sessionStorage", roundTripKey, null);
+      if (!document.referrer.startsWith(hongKong)) return startSurvey();
+      write("localStorage", browserKey, offered);
+      if (submitted === "1") write("localStorage", doneKey, "yes");
+      bind(offered);
+      return startSurvey();
+    }
+    if (uuid.test(receipt)) {
+      bind(receipt);
+      return startSurvey();
+    }
+    const request = crypto.randomUUID();
+    if (!write("sessionStorage", roundTripKey, request)) return startSurvey();
+    // Preserve the independent Pages questionnaire when the Hong Kong site is unreachable.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+    try {
+      await fetch(hongKong, {method: "HEAD", mode: "no-cors", credentials: "omit",
+        referrerPolicy: "no-referrer", cache: "no-store", signal: controller.signal});
+    } catch {
+      window.hyacinthSurvey = Object.freeze({voteEndpoint: ""});
+      write("sessionStorage", roundTripKey, null);
+      return startSurvey();
+    } finally { clearTimeout(timeout); }
+    return transfer(hongKong, "request", request, existingDraft()?.data.receipt || crypto.randomUUID(), done);
+  }
+  if (navigator.locks) await navigator.locks.request(browserKey, open);
+  else open();
+}
+initialize().catch(() => startSurvey());
+  </script>
 </head>
 <body>
   <div id="survey"></div>
