@@ -54,7 +54,7 @@ function bind(receipt) {
 
 function startSurvey() {
   const script = document.createElement("script");
-  script.src = "./survey.js?v=recovery39c";
+  script.src = "./survey.js?v=copy39d";
   document.head.appendChild(script);
 }
 
@@ -166,7 +166,6 @@ const consentKey = prefix + "privacy:v3";
 let started = false;
 function begin() {
   started = true;
-  document.querySelector("#perspective").hidden = false;
   document.querySelector("#notice-link").hidden = false;
   initialize().catch(() => startSurvey());
 }
@@ -231,8 +230,7 @@ async function admit() {
 admit().catch(() => { if (!dialog.open && !started) ask(); });
   </script>
 <style>
-#perspective,.perspective{background:#ff993e;color:#241306;font-weight:800;text-align:center;padding:.65rem 1rem;letter-spacing:.02em}
-#perspective{position:sticky;top:0;z-index:5;font-size:clamp(16px,3vw,20px)}
+#privacy .perspective{background:#ff993e;color:#241306;font-weight:800;text-align:center;padding:.65rem 1rem;letter-spacing:.02em}
 #privacy{box-sizing:border-box;width:min(28rem,calc(100% - 2rem));max-height:90dvh;overflow:auto;margin:auto;border:0;border-radius:18px;padding:1.5rem;background:#fffaf5;color:#261b15;box-shadow:0 16px 80px #24130633;font:16px/1.65 system-ui,sans-serif}
 #privacy::backdrop{background:#241a16a8}#privacy h1{font-size:1.45rem;margin:0 0 .8rem}#privacy .perspective{border-radius:8px}#privacy label{display:flex;gap:.65rem;align-items:center;padding:.6rem 0;font-weight:650}
 #privacy input{width:1.25rem;height:1.25rem;accent-color:#833506}#privacy button,#reopen{border:0;border-radius:8px;padding:.75rem 1rem;font:inherit;cursor:pointer}#privacy footer{display:flex;gap:.6rem;justify-content:flex-end;margin-top:1rem}
@@ -245,14 +243,13 @@ admit().catch(() => { if (!dialog.open && !started) ask(); });
 [hidden],#privacy [hidden],.rights-link[hidden]{display:none!important}
 </style></head>
 <body>
-  <div id="perspective" hidden>题目中的「我」都指方信子（风信子）</div>
   <dialog id="privacy" aria-labelledby="privacy-title">
     <h1 id="privacy-title">匿名问卷 · 隐私说明</h1>
-    <p class="perspective">题目中的「我」都指方信子（风信子）</p>
+    <p class="perspective">题目中的「我」都指风信子</p>
     <p>这是一份不记名的朋友印象问卷。所有题都可跳过，包括你和风信子的关系。</p>
-    <p>答卷由阿里云中国香港地域的收票服务加密保存。启用 Cloudflare 代理时，你提交的答案和管理答卷的请求会先经 Cloudflare 转发。风信子在统计页查看各题票数。</p>
+    <p>答卷由阿里云中国香港地域的收票服务加密保存。启用 Cloudflare 代理时，你提交的答案和管理答卷的请求会先经 Cloudflare 转发。</p>
     <details><summary>数据、保存期限与联系方式</summary>
-      <p><strong>防止重复填写。</strong>收票服务处理随机浏览器标识和连接时的公网 IP，用带密钥的摘要去重。问卷数据库不保存明文 IP。提交新答卷前会进行防刷验证。若使用 Cloudflare Turnstile，验证组件会接收连接 IP 和浏览器技术信息，不接收题目答案。</p>
+      <p><strong>防止重复填写。</strong>每个浏览器、每个公网 IP 各限提交一份新答卷。收票服务处理随机浏览器标识和连接时的公网 IP，用带密钥的摘要去重。问卷数据库不保存明文 IP。提交新答卷前会进行防刷验证。若使用 Cloudflare Turnstile，验证组件会接收连接 IP 和浏览器技术信息，不接收题目答案。</p>
       <p><strong>网络传输。</strong>启用 Cloudflare 代理时，Cloudflare 会收到你的连接 IP，转发答案和浏览器标识。查看、修改或撤回答卷时，它也会转发答卷管理凭证及服务返回的答卷内容。网页托管和网络服务可能保留访问日志。使用 GitHub Pages 时，GitHub 会出于安全目的记录访问 IP。</p>
       <p><strong>保存多久。</strong>问卷长期开放。逐份回答保留至你撤回或问卷结束收集，以支持找回和修改。撤回时删除回答并扣除相应票数。为了避免再次投票，防重复标记保留到结束收集。结束后仅保留各题汇总。</p>
       <p><strong>你可以做什么。</strong>原浏览器保存草稿和修改凭证。请在提交后私下保存恢复码；持码者可以在任意设备查看和撤回该份回答。你可在浏览器设置中清除本机记录。旧版仅以汇总形式保留的答卷无法逐份找回。</p>
