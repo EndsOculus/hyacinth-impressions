@@ -47,14 +47,14 @@ function bind(receipt) {
   const draft = existingDraft();
   if (read("localStorage", doneKey) === "yes") return;
   // Keep an outstanding request idempotent, even after migration.
-  if (draft?.data.receipt === receipt || (draft?.key === currentKey && draft.data.pending === true)) return;
+  if (draft?.data.receipt === receipt || draft?.data.pending === true) return;
   const data = draft?.data ?? {page: 0, answers: {}, pending: false};
   write("localStorage", draft?.key ?? currentKey, JSON.stringify({...data, receipt}));
 }
 
 function startSurvey() {
   const script = document.createElement("script");
-  script.src = "./survey.js?v=copy39d";
+  script.src = "./survey.js?v=verify39f";
   document.head.appendChild(script);
 }
 
@@ -163,9 +163,13 @@ const general = document.querySelector("#consent");
 const transferConsent = document.querySelector("#transfer-consent");
 const enter = document.querySelector("#enter");
 const consentKey = prefix + "privacy:v3";
+// Only a receipt already on this origin before any cross-entry transfer may be claimed automatically.
+const arrivedByTransfer = location.hash.startsWith("#fx=");
 let started = false;
 function begin() {
   started = true;
+  const originalReceipt = !arrivedByTransfer && read("localStorage", doneKey) === "yes" ? read("localStorage", browserKey) : null;
+  window.hyacinthReturningReceipt = uuid.test(originalReceipt) ? originalReceipt : null;
   document.querySelector("#notice-link").hidden = false;
   initialize().catch(() => startSurvey());
 }
@@ -249,10 +253,10 @@ admit().catch(() => { if (!dialog.open && !started) ask(); });
     <p>这是一份不记名的朋友印象问卷。所有题都可跳过，包括你和风信子的关系。</p>
     <p>答卷由阿里云中国香港地域的收票服务加密保存。启用 Cloudflare 代理时，你提交的答案和管理答卷的请求会先经 Cloudflare 转发。</p>
     <details><summary>数据、保存期限与联系方式</summary>
-      <p><strong>防止重复填写。</strong>每个浏览器、每个公网 IP 各限提交一份新答卷。收票服务处理随机浏览器标识和连接时的公网 IP，用带密钥的摘要去重。问卷数据库不保存明文 IP。提交新答卷前会进行防刷验证。若使用 Cloudflare Turnstile，验证组件会接收连接 IP 和浏览器技术信息，不接收题目答案。</p>
+      <p><strong>防止重复填写。</strong>每个浏览器限提交一份新答卷。IPv4 按公网地址、IPv6 按 /64 网段各限一份；家人或室友可能共用名额。收票服务用带密钥的摘要去重，问卷数据库不保存明文 IP。提交新答卷时，Cloudflare Turnstile 会接收连接 IP 和浏览器技术信息，不接收题目答案。</p>
       <p><strong>网络传输。</strong>启用 Cloudflare 代理时，Cloudflare 会收到你的连接 IP，转发答案和浏览器标识。查看、修改或撤回答卷时，它也会转发答卷管理凭证及服务返回的答卷内容。网页托管和网络服务可能保留访问日志。使用 GitHub Pages 时，GitHub 会出于安全目的记录访问 IP。</p>
       <p><strong>保存多久。</strong>问卷长期开放。逐份回答保留至你撤回或问卷结束收集，以支持找回和修改。撤回时删除回答并扣除相应票数。为了避免再次投票，防重复标记保留到结束收集。结束后仅保留各题汇总。</p>
-      <p><strong>你可以做什么。</strong>原浏览器保存草稿和修改凭证。请在提交后私下保存恢复码；持码者可以在任意设备查看和撤回该份回答。你可在浏览器设置中清除本机记录。旧版仅以汇总形式保留的答卷无法逐份找回。</p>
+      <p><strong>你可以做什么。</strong>原浏览器保存草稿和修改凭证。请在提交后私下保存恢复码；持码者可以在任意设备查看和撤回该份回答。你可在浏览器设置中清除本机记录。可认领的旧答卷请在北京时间 2026 年 11 月 30 日零点前，用原浏览器、原网址和原网络打开并保存恢复码。截止后未认领的答卷仍计票，无法再查看、修改或撤回。已绑定的恢复码继续有效。早期仅有汇总的答卷无法逐份找回。</p>
       <p><strong>处理地点与联系。</strong>本问卷发起人是风信子。询问隐私、行使权利可联系 <a href="mailto:EndsOculus@icloud.com">EndsOculus@icloud.com</a>。收票服务使用阿里云中国香港地域的函数计算及表格存储。阿里云个人信息保护联系邮箱为 <a href="mailto:pipaliyun@service.aliyun.com">pipaliyun@service.aliyun.com</a>。请勿在邮件中附上恢复码。</p>
     </details>
     <div id="admission">
