@@ -121,10 +121,58 @@ async function initialize() {
   if (navigator.locks) await navigator.locks.request(browserKey, open);
   else open();
 }
-initialize().catch(() => startSurvey());
+const dialog = document.querySelector("#privacy");
+const checkbox = document.querySelector("#consent");
+const enter = document.querySelector("#enter");
+const waiting = document.querySelector("#waiting");
+const consentKey = prefix + "privacy:v1";
+function begin() {
+  document.querySelector("#perspective").hidden = false;
+  initialize().catch(() => startSurvey());
+}
+function pause() {
+  dialog.close();
+  waiting.hidden = false;
+  document.querySelector("#reopen").focus();
+}
+function ask() {
+  waiting.hidden = true;
+  checkbox.checked = false;
+  enter.disabled = true;
+  dialog.showModal();
+}
+checkbox.onchange = () => { enter.disabled = !checkbox.checked; };
+enter.onclick = () => {
+  if (!checkbox.checked) return;
+  write("localStorage", consentKey, "yes") || write("sessionStorage", consentKey, "yes");
+  dialog.close();
+  begin();
+};
+document.querySelector("#pause").onclick = pause;
+document.querySelector("#reopen").onclick = ask;
+dialog.oncancel = event => { event.preventDefault(); pause(); };
+if (read("localStorage", consentKey) === "yes" || read("sessionStorage", consentKey) === "yes") begin();
+else ask();
   </script>
-</head>
+<style>
+#perspective,.perspective{background:#ff993e;color:#241306;font-weight:800;text-align:center;padding:.65rem 1rem;letter-spacing:.02em}
+#perspective{position:sticky;top:0;z-index:5;font-size:clamp(16px,3vw,20px)}
+#privacy{box-sizing:border-box;width:min(28rem,calc(100% - 2rem));max-height:90dvh;overflow:auto;margin:auto;border:0;border-radius:18px;padding:1.5rem;background:#fffaf5;color:#261b15;box-shadow:0 16px 80px #24130633;font:16px/1.65 system-ui,sans-serif}
+#privacy::backdrop{background:#241a16a8}#privacy h1{font-size:1.45rem;margin:0 0 .8rem}#privacy .perspective{border-radius:8px}#privacy label{display:flex;gap:.65rem;align-items:center;padding:.6rem 0;font-weight:650}
+#privacy input{width:1.25rem;height:1.25rem;accent-color:#833506}#privacy button,#reopen{border:0;border-radius:8px;padding:.75rem 1rem;font:inherit;cursor:pointer}#privacy footer{display:flex;gap:.6rem;justify-content:flex-end;margin-top:1rem}
+#enter{color:white;background:#773006}#enter:disabled{color:#534e47;background:#e1ddd7;cursor:default}#pause{background:#efe9e2;color:#30231c}#waiting{text-align:center;padding:3rem 1rem}
+</style></head>
 <body>
+  <div id="perspective" hidden>题目中的「我」指风信子</div>
+  <dialog id="privacy" aria-labelledby="privacy-title">
+    <h1 id="privacy-title">匿名问卷 · 隐私说明</h1>
+    <p class="perspective">题目中的「我」指风信子</p>
+    <p>请按你对风信子的印象作答。不用填写姓名或联系方式，不熟悉的题可以跳过。</p>
+    <p>草稿和修改凭证保存在当前浏览器。提交后，服务端保存你的选择，用浏览器标识和公网 IP 的摘要防止重复提交。风信子通过统计页查看各题票数。</p>
+    <label><input id="consent" type="checkbox">已阅读隐私说明，同意参与问卷</label>
+    <footer><button id="pause">暂不填写</button><button id="enter" disabled>进入问卷</button></footer>
+  </dialog>
+  <div id="waiting" hidden><p>你尚未进入问卷。</p><button id="reopen">查看隐私说明</button></div>
   <div id="survey"></div>
   <noscript>请启用 JavaScript 填写问卷。</noscript>
 </body>
