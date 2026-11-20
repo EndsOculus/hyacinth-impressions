@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="风信子给朋友的匿名印象问卷，共 38 题，可以跳过不熟悉的题目。">
+  <meta name="description" content="风信子给朋友的匿名印象问卷，共 39 题，可以跳过不熟悉的题目。">
   <title>你眼中的风信子</title>
   <link rel="icon" href="./favicon.svg">
-  <link rel="stylesheet" href="./survey.css">
+  <link rel="stylesheet" href="./survey.css?v=recovery39c">
   <script defer src="./config.js"></script>
   <script type="module">
 const hongKong = "https://vote.ends0culus.com/";
@@ -54,7 +54,7 @@ function bind(receipt) {
 
 function startSurvey() {
   const script = document.createElement("script");
-  script.src = "./survey.js";
+  script.src = "./survey.js?v=recovery39c";
   document.head.appendChild(script);
 }
 
@@ -62,41 +62,77 @@ function clearFragment() {
   history.replaceState(history.state, "", location.pathname + location.search);
 }
 
-// Both navigation destinations are fixed. No URL, answers or other personal
-// information can travel in the fragment, which the HTTP server never sees.
+// Neither navigation destination is supplied by the incoming packet.
 function transfer(url, direction, nonce, receipt, done) {
-  location.replace(url + "#fx=" + [direction, nonce, receipt, done ? "1" : "0"].join("."));
+  const fields = [direction, nonce, receipt, done ? "1" : "0"];
+  if (direction === "request-v2") fields.push(Math.floor(Date.now() / 1000));
+  location.replace(url + "#fx=" + fields.join("."));
+}
+
+function transferPacket() {
+  if (!location.hash.startsWith("#fx=")) return null;
+  const fields = location.hash.slice(4).split(".");
+  const [direction, nonce, offered, submitted, issued] = fields;
+  if (!uuid.test(nonce) || !uuid.test(offered) || !/^[01]$/.test(submitted)) return null;
+  if (direction === "request-v2") {
+    const age = Math.floor(Date.now() / 1000) - Number(issued);
+    if (fields.length !== 5 || !/^\d{10}$/.test(issued) || age < 0 || age > 300) return null;
+  } else if (!["request", "return"].includes(direction) || fields.length !== 4) return null;
+  return {direction, nonce, offered, submitted};
+}
+
+function onHongKongHome() {
+  return location.origin === new URL(hongKong).origin && ["/", "/index.html"].includes(location.pathname);
+}
+
+function cameFromPages() {
+  try {
+    const ref = new URL(document.referrer);
+    const source = new URL(pages);
+    return ref.origin === source.origin && ["/", source.pathname, new URL("index.html", pages).pathname].includes(ref.pathname);
+  } catch { return false; }
+}
+
+function bindHongKong(packet) {
+  let receipt = read("localStorage", browserKey);
+  if (!uuid.test(receipt)) {
+    receipt = existingDraft()?.data.receipt || packet?.offered || crypto.randomUUID();
+    if (!write("localStorage", browserKey, receipt)) return null;
+  }
+  if (packet?.submitted === "1" && !write("localStorage", doneKey, "yes")) return null;
+  return receipt;
+}
+
+function returnToPages(packet) {
+  const receipt = bindHongKong(packet);
+  if (!receipt) return false;
+  transfer(pages, "return", packet.nonce, receipt, read("localStorage", doneKey) === "yes");
+  return true;
 }
 
 async function initialize() {
   if (window.top !== window || !crypto.randomUUID) return startSurvey();
-  const isHK = location.origin === new URL(hongKong).origin;
+  const isHK = onHongKongHome();
   const isPages = location.origin === new URL(pages).origin && [new URL(pages).pathname, new URL("index.html", pages).pathname].includes(location.pathname);
   if (!isHK && !isPages) return startSurvey();
-  const [direction, nonce, offered, submitted, ...extra] = location.hash.slice(4).split(".");
-  const packet = location.hash.startsWith("#fx=") && uuid.test(nonce) && uuid.test(offered) &&
-    /^[01]$/.test(submitted) && extra.length === 0;
+  const packet = transferPacket();
   if (location.hash.startsWith("#fx=")) clearFragment();
   async function open() {
-    let receipt = read("localStorage", browserKey);
+    const receipt = read("localStorage", browserKey);
     const done = read("localStorage", doneKey) === "yes";
     if (isHK) {
-      const returning = packet && direction === "request" && document.referrer.startsWith(new URL(pages).origin + "/");
-      if (!uuid.test(receipt)) {
-        receipt = existingDraft()?.data.receipt || (returning ? offered : crypto.randomUUID());
-        write("localStorage", browserKey, receipt);
-      }
-      if (returning && submitted === "1") write("localStorage", doneKey, "yes");
-      bind(receipt);
-      if (returning) return transfer(pages, "return", nonce, receipt, read("localStorage", doneKey) === "yes");
+      // Old Pages sessions can still finish their transfer after the Hong Kong notice.
+      if (packet?.direction === "request" && cameFromPages() && returnToPages(packet)) return;
+      const localReceipt = bindHongKong();
+      if (localReceipt) bind(localReceipt);
       return startSurvey();
     }
-    if (packet && direction === "return" && read("sessionStorage", roundTripKey) === nonce) {
+    if (packet?.direction === "return" && read("sessionStorage", roundTripKey) === packet.nonce) {
       write("sessionStorage", roundTripKey, null);
       if (!document.referrer.startsWith(hongKong)) return startSurvey();
-      write("localStorage", browserKey, offered);
-      if (submitted === "1") write("localStorage", doneKey, "yes");
-      bind(offered);
+      write("localStorage", browserKey, packet.offered);
+      if (packet.submitted === "1") write("localStorage", doneKey, "yes");
+      bind(packet.offered);
       return startSurvey();
     }
     if (uuid.test(receipt)) {
@@ -116,43 +152,83 @@ async function initialize() {
       write("sessionStorage", roundTripKey, null);
       return startSurvey();
     } finally { clearTimeout(timeout); }
-    return transfer(hongKong, "request", request, existingDraft()?.data.receipt || crypto.randomUUID(), done);
+    return transfer(hongKong, "request-v2", request, existingDraft()?.data.receipt || crypto.randomUUID(), done);
   }
   if (navigator.locks) await navigator.locks.request(browserKey, open);
   else open();
 }
 const dialog = document.querySelector("#privacy");
-const checkbox = document.querySelector("#consent");
-const enter = document.querySelector("#enter");
 const waiting = document.querySelector("#waiting");
-const consentKey = prefix + "privacy:v1";
+const general = document.querySelector("#consent");
+const transferConsent = document.querySelector("#transfer-consent");
+const enter = document.querySelector("#enter");
+const consentKey = prefix + "privacy:v2";
+let started = false;
 function begin() {
+  started = true;
   document.querySelector("#perspective").hidden = false;
+  document.querySelector("#notice-link").hidden = false;
   initialize().catch(() => startSurvey());
 }
 function pause() {
   dialog.close();
-  waiting.hidden = false;
-  document.querySelector("#reopen").focus();
+  if (started) {
+    document.querySelector("#notice-link").focus();
+  } else {
+    waiting.hidden = false;
+    document.querySelector("#reopen").focus();
+  }
 }
 function ask() {
   waiting.hidden = true;
-  checkbox.checked = false;
+  general.checked = false;
+  transferConsent.checked = false;
   enter.disabled = true;
+  document.querySelector("#admission").hidden = started;
+  document.querySelector("#pause").textContent = started ? "返回问卷" : "暂不填写";
+  enter.hidden = started;
+  document.querySelector("#manage").hidden = started;
   dialog.showModal();
 }
-checkbox.onchange = () => { enter.disabled = !checkbox.checked; };
+function updateConsent() {
+  enter.disabled = !(general.checked && transferConsent.checked);
+}
+general.onchange = transferConsent.onchange = updateConsent;
 enter.onclick = () => {
-  if (!checkbox.checked) return;
+  if (!general.checked || !transferConsent.checked || started) return;
   write("localStorage", consentKey, "yes") || write("sessionStorage", consentKey, "yes");
   dialog.close();
   begin();
 };
+function manage() {
+  if (dialog.open) dialog.close();
+  waiting.hidden = true;
+  window.hyacinthManageOnly = true;
+  startSurvey();
+}
+document.querySelector("#manage").onclick = manage;
+document.querySelector("#manage-from-wait").onclick = manage;
 document.querySelector("#pause").onclick = pause;
 document.querySelector("#reopen").onclick = ask;
+document.querySelector("#notice-link").onclick = ask;
 dialog.oncancel = event => { event.preventDefault(); pause(); };
-if (read("localStorage", consentKey) === "yes" || read("sessionStorage", consentKey) === "yes") begin();
-else ask();
+async function admit() {
+  if (onHongKongHome() && location.hash.startsWith("#fx=")) {
+    const packet = transferPacket();
+    if (window.top === window && packet?.direction === "request-v2" && cameFromPages()) {
+      try {
+        const relay = () => transferPacket()?.direction === "request-v2" && returnToPages(packet);
+        if (await (navigator.locks ? navigator.locks.request(browserKey, relay) : relay())) return;
+      } catch {}
+    }
+    // Keep only a predecessor request so a person can explicitly authorize it.
+    if (packet?.direction !== "request") clearFragment();
+    return ask();
+  }
+  if (read("localStorage", consentKey) === "yes" || read("sessionStorage", consentKey) === "yes") begin();
+  else ask();
+}
+admit().catch(() => { if (!dialog.open && !started) ask(); });
   </script>
 <style>
 #perspective,.perspective{background:#ff993e;color:#241306;font-weight:800;text-align:center;padding:.65rem 1rem;letter-spacing:.02em}
@@ -161,19 +237,36 @@ else ask();
 #privacy::backdrop{background:#241a16a8}#privacy h1{font-size:1.45rem;margin:0 0 .8rem}#privacy .perspective{border-radius:8px}#privacy label{display:flex;gap:.65rem;align-items:center;padding:.6rem 0;font-weight:650}
 #privacy input{width:1.25rem;height:1.25rem;accent-color:#833506}#privacy button,#reopen{border:0;border-radius:8px;padding:.75rem 1rem;font:inherit;cursor:pointer}#privacy footer{display:flex;gap:.6rem;justify-content:flex-end;margin-top:1rem}
 #enter{color:white;background:#773006}#enter:disabled{color:#534e47;background:#e1ddd7;cursor:default}#pause{background:#efe9e2;color:#30231c}#waiting{text-align:center;padding:3rem 1rem}
+#privacy summary{cursor:pointer;font-weight:700;color:#793309}
+#privacy details{border-block:1px solid #e1cfc0;padding:.6rem 0;margin:.8rem 0}
+#privacy a{color:#753708;overflow-wrap:anywhere}
+#privacy input{flex:none}#privacy label{align-items:flex-start;line-height:1.48}
+#privacy .rights-link,.rights-link{display:block;background:transparent;color:#743710;border:0;text-decoration:underline;margin:.6rem auto;padding:.5rem;font:inherit;cursor:pointer}
+[hidden],#privacy [hidden],.rights-link[hidden]{display:none!important}
 </style></head>
 <body>
-  <div id="perspective" hidden>题目中的「我」指风信子</div>
+  <div id="perspective" hidden>题目中的「我」都指方信子（风信子）</div>
   <dialog id="privacy" aria-labelledby="privacy-title">
     <h1 id="privacy-title">匿名问卷 · 隐私说明</h1>
-    <p class="perspective">题目中的「我」指风信子</p>
-    <p>请按你对风信子的印象作答。不用填写姓名或联系方式，不熟悉的题可以跳过。</p>
-    <p>草稿和修改凭证保存在当前浏览器。提交后，服务端保存你的选择，用浏览器标识和公网 IP 的摘要防止重复提交。风信子通过统计页查看各题票数。</p>
-    <label><input id="consent" type="checkbox">已阅读隐私说明，同意参与问卷</label>
+    <p class="perspective">题目中的「我」都指方信子（风信子）</p>
+    <p>这是一份不记名的朋友印象问卷。所有题都可跳过，包括你和风信子的关系。</p>
+    <p>你的选择会发送至阿里云中国香港地域，加密保存，以便日后查看和撤回。风信子在统计页查看各题票数。</p>
+    <details><summary>数据、保存期限与联系方式</summary>
+      <p><strong>防止重复填写。</strong>收票服务处理随机浏览器标识和连接时的公网 IP，用带密钥的摘要去重。问卷数据库不保存明文 IP。提交新答卷前会进行防刷验证。使用本站验证时，由浏览器完成计算；若启用 Cloudflare Turnstile，验证框会标明提供方。加载它时，Cloudflare 会收到连接 IP 和浏览器技术信息，问卷不会向其发送你的答案。网页托管和网络服务可能另行保留访问日志；GitHub Pages 会出于安全目的记录访问 IP。</p>
+      <p><strong>保存多久。</strong>问卷长期开放。逐份回答保留至你撤回或问卷结束收集，以支持找回和修改。撤回时删除回答并扣除相应票数。为了避免再次投票，防重复标记保留到结束收集。结束后仅保留各题汇总。</p>
+      <p><strong>你可以做什么。</strong>原浏览器保存草稿和修改凭证。请在提交后私下保存恢复码；持码者可以在任意设备查看和撤回该份回答。你可在浏览器设置中清除本机记录。旧版仅以汇总形式保留的答卷无法逐份找回。</p>
+      <p><strong>处理地点与联系。</strong>本问卷发起人是风信子。询问隐私、行使权利可联系 <a href="mailto:EndsOculus@icloud.com">EndsOculus@icloud.com</a>。云服务由阿里云提供，使用中国香港地域的函数计算及表格存储。阿里云个人信息保护联系邮箱为 <a href="mailto:pipaliyun@service.aliyun.com">pipaliyun@service.aliyun.com</a>。请勿在邮件中附上恢复码。</p>
+    </details>
+    <div id="admission">
+      <label><input id="consent" type="checkbox">已阅读隐私说明，同意参与问卷</label>
+      <label><input id="transfer-consent" type="checkbox">单独同意由中国香港的收票服务处理我的选择、浏览器标识和公网 IP，用于统计、去重和答卷管理</label>
+    </div>
     <footer><button id="pause">暂不填写</button><button id="enter" disabled>进入问卷</button></footer>
+    <button class="rights-link" id="manage">已有恢复码？查看或撤回答卷</button>
   </dialog>
-  <div id="waiting" hidden><p>你尚未进入问卷。</p><button id="reopen">查看隐私说明</button></div>
+  <div id="waiting" hidden><p>你尚未进入问卷。</p><button id="reopen">查看隐私说明</button><button class="rights-link" id="manage-from-wait">凭恢复码管理已有答卷</button></div>
   <div id="survey"></div>
+  <button id="notice-link" class="rights-link" hidden>隐私说明与联系方式</button>
   <noscript>请启用 JavaScript 填写问卷。</noscript>
 </body>
 </html>
