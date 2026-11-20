@@ -6,6 +6,7 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("live", type=Path)
 parser.add_argument("output", type=Path)
+parser.add_argument("--relay", type=Path, default=Path(__file__).resolve().parent.parent / "network-trial")
 args = parser.parse_args()
 here = Path(__file__).resolve().parent
 assert args.live.resolve() != args.output.resolve()
@@ -18,7 +19,7 @@ addon = '''    if isinstance(path, str) and path.startswith("/_cf-trial/"):
         return serve(path, method)
 '''
 files = {"cf_trial.py": here / "cf_trial.py", "cf_trial_assets.py": here / "cf_trial_assets.py",
-         "cf_trial_frontend/worker.mjs": here / "relay" / "worker.mjs"}
+         "cf_trial_frontend/worker.mjs": args.relay / "worker.mjs"}
 for file in ("index.html", "trial.css", "trial.js"):
     files["cf_trial_frontend/" + file] = here / "frontend" / file
 
